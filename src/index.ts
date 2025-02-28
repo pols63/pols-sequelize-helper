@@ -236,7 +236,7 @@ export const selectQuery = (model: new () => any, options: PFindOptions): string
 	const sequelizeInstance = m.sequelize as Sequelize
 	if (!sequelizeInstance) throw new Error(`No se ha inicializado la instancia`)
 	const queryGenerator = sequelizeInstance.getQueryInterface().queryGenerator as any
-	const tableName = queryGenerator.quoteTable({ schema: m.schema, tableName: model.name })
+	const tableName = queryGenerator.quoteTable({ schema: m._schema, tableName: model.name })
 
 	return (sequelizeInstance.getQueryInterface().queryGenerator as any).selectQuery('@@toreplace@@', options).replace(/;$/, '').replace(/@@toreplace@@/g, tableName)
 }
@@ -251,7 +251,7 @@ export const countQuery = (model: new () => any, options: PFindOptions): string 
 	const sequelizeInstance = m.sequelize as Sequelize
 	if (!sequelizeInstance) throw new Error(`No se ha inicializado la instancia`)
 	const queryGenerator = sequelizeInstance.getQueryInterface().queryGenerator as any
-	const tableName = queryGenerator.quoteTable({ schema: m.schema, tableName: model.name })
+	const tableName = queryGenerator.quoteTable({ schema: m._schema, tableName: model.name })
 	
 	return (sequelizeInstance.getQueryInterface().queryGenerator as any).selectQuery('@@toreplace@@', {
 		...options,
