@@ -9,7 +9,7 @@ export const sequelize = new Sequelize(
 	timezone: '-05:00',
 })
 
-export class Test extends Model {
+export class TestPadres extends Model {
 	declare id: string
 	declare Nombres: string
 	declare Apellidos: string
@@ -17,33 +17,31 @@ export class Test extends Model {
 	declare Ingreso: Date
 }
 
-Test.init({
+TestPadres.init({
 	id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
 	Nombres: { type: DataTypes.STRING },
 	Apellidos: { type: DataTypes.STRING },
 	Edad: { type: DataTypes.INTEGER },
 	Ingreso: { type: DataTypes.DATE }
 }, {
-	tableName: 'Test',
+	tableName: TestPadres.name,
 	sequelize
 })
 
 export class TestHijos extends Model {
 	declare id: string
 	declare idCabecera: string
-	declare Nombres: string
-	declare Apellidos: string
-	declare Edad: number
-	declare Ingreso: Date
+	declare Dato: string
 }
 
-Test.init({
+TestHijos.init({
 	id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
-	Nombres: { type: DataTypes.STRING },
-	Apellidos: { type: DataTypes.STRING },
-	Edad: { type: DataTypes.INTEGER },
-	Ingreso: { type: DataTypes.DATE }
+	idCabecera: { type: DataTypes.BIGINT },
+	Dato: { type: DataTypes.STRING },
 }, {
 	tableName: TestHijos.name,
 	sequelize
 })
+
+TestPadres.hasMany(TestHijos, { as: 'Hijos', sourceKey: 'id', foreignKey: 'idCabecera' })
+TestHijos.belongsTo(TestPadres, { as: 'Padre', targetKey: 'id', foreignKey: 'idCabecera' })

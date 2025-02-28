@@ -1,5 +1,5 @@
 import { PUtils } from 'pols-utils'
-import { FindOptions, Includeable, IncludeOptions, Model, Op } from 'sequelize'
+import { FindOptions, Includeable, IncludeOptions, Model, Op, Sequelize } from 'sequelize'
 import { Cast, Col, Fn } from 'sequelize/lib/utils'
 
 export type POrder = ([...{ model?: any, as: string }[], string, 'asc' | 'desc'] | [string, 'asc' | 'desc'])[]
@@ -18,6 +18,16 @@ export type PFindOptions = Omit<FindOptions, 'order' | 'include'> & {
 	order?: POrder
 	include?: PIncludeOptions | PIncludeOptions[]
 	page?: number
+	rowsPerPage?: number
+}
+
+export type PFindAllConfig = {
+	includeRequiredDefault?: boolean
+	secureSeparate?: boolean
+}
+
+export type PFindAllByPageConfig = {
+	includeRequiredDefault?: boolean
 }
 
 const completeFilter = (model: typeof Model, options?: PFindOptions) => {
@@ -72,13 +82,13 @@ const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 	options.where[Op.and] = opAnd
 }
 
-const completeInclude = (model: typeof Model, include: PIncludeOptions, secureSeparate = false) => {
+const completeInclude = (model: typeof Model, include: PIncludeOptions, secureSeparate = true, includeRequiredDefault = false) => {
 	if (include == null || typeof include != 'object') return
 	if (include.model) return
 	const association = model.associations[include.as]
 	if (association == null) throw new Error(`No se encontró relación con nombre '${include.as}'`)
 	include.model = association.target
-	include.required = include.required ?? false
+	if (include.required == null) include.required = includeRequiredDefault
 	if (include.include) completeAnyInclude(model, include.include as any, secureSeparate)
 	if (secureSeparate && !['BelongsTo', 'HasOne'].includes(association.associationType)) {
 		include.separate = true
@@ -86,13 +96,13 @@ const completeInclude = (model: typeof Model, include: PIncludeOptions, secureSe
 	completeFilter(model, include as any)
 }
 
-const completeAnyInclude = (model: typeof Model, include: PIncludeOptions | PIncludeOptions[], secureSeparate = false) => {
+const completeAnyInclude = (model: typeof Model, include: PIncludeOptions | PIncludeOptions[], secureSeparate = true, includeRequiredDefault = false) => {
 	if (include instanceof Array) {
 		for (const i of include) {
-			completeInclude(model, i, secureSeparate)
+			completeInclude(model, i, secureSeparate, includeRequiredDefault)
 		}
 	} else {
-		completeInclude(model, include, secureSeparate)
+		completeInclude(model, include, secureSeparate, includeRequiredDefault)
 	}
 }
 
@@ -114,24 +124,28 @@ const completeOrder = (model: typeof Model, order: POrder) => {
 	}
 }
 
-const includeIsBelongsTo = (model: any, include: PIncludeOptions) => {
+const includeIsOneToOne = (model: any, include: PIncludeOptions) => {
 	const association = model.associations[include.as]
 	if (association == null) throw new Error(`No se encontró relación con nombre '${include.as}'`)
-	return association.associationType == 'BelongsTo'
+	return ['BelongsTo', 'HasOne'].includes(association.associationType)
 }
 
-export const findAll = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions): Promise<[T] extends [never] ? InstanceType<P>[] : T[]> => {
-	const m = model as any
-	if (options?.include) completeAnyInclude(m, options.include, true)
+export const findAll: {
+	<T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllConfig): Promise<[T] extends [never] ? InstanceType<P>[] : T[]>
+} & PFindAllConfig = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllConfig): Promise<[T] extends [never] ? InstanceType<P>[] : T[]> => {
+	const m = model as unknown as typeof Model
+	if (options?.include) completeAnyInclude(m, options.include, config?.secureSeparate ?? findAll.secureSeparate, config?.includeRequiredDefault ?? findAll.includeRequiredDefault)
 	if (options?.order) completeOrder(m, options.order)
 	completeFilter(m, options)
 
-	return await m.findAll(options)
+	return await (m as any).findAll(options)
 }
+findAll.includeRequiredDefault = false
+findAll.secureSeparate = true
 
 export const findOne = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions): Promise<[T] extends [never] ? InstanceType<P> : T> => {
 	const m = model as any
-	if (options?.include) completeAnyInclude(m, options.include)
+	if (options?.include) completeAnyInclude(m, options.include, false)
 	if (options?.order) completeOrder(m, options.order)
 	completeFilter(m, options)
 
@@ -147,11 +161,11 @@ export const count = async (model: any, options: PFindOptions): Promise<number> 
 		if (optionsCopy.include instanceof Array) {
 			const include: PIncludeOptions[] = []
 			for (const i of optionsCopy.include) {
-				if (includeIsBelongsTo(model, i)) include.push(i)
+				if (includeIsOneToOne(model, i)) include.push(i)
 			}
 			optionsCopy.include = include
 		} else {
-			if (!includeIsBelongsTo(model, optionsCopy.include)) delete optionsCopy.include
+			if (!includeIsOneToOne(model, optionsCopy.include)) delete optionsCopy.include
 		}
 	}
 
@@ -161,21 +175,22 @@ export const count = async (model: any, options: PFindOptions): Promise<number> 
 }
 
 export const findAllByPage: {
-	<T, P extends new () => any = new () => any>(model: P, options?: PFindOptions, rowsPerPage?: number): Promise<{
+	<T, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllByPageConfig): Promise<{
 		rows: [T] extends [never] ? InstanceType<P>[] : T[]
 		rowsCount: number
 	}>
 	rowsPerPage?: number
-} = async <T, P extends new () => any = new () => any>(model: P, options?: PFindOptions, rowsPerPage?: number): Promise<{
+} & PFindAllByPageConfig = async <T, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllByPageConfig): Promise<{
 	rows: [T] extends [never] ? InstanceType<P>[] : T[]
 	rowsCount: number
 }> => {
-		const m = model as unknown as Model
 		let page = options.page != null ? Math.floor(PUtils.Number.forceNumber(options.page)) : -1
-		rowsPerPage = Math.floor(PUtils.Number.forceNumber(rowsPerPage || findAllByPage.rowsPerPage))
+		let rowsPerPage = Math.floor(PUtils.Number.forceNumber(options.rowsPerPage ?? findAllByPage.rowsPerPage))
 
 		if (page < 1 || rowsPerPage <= 0) {
-			const records = await findAll<T, P>(model, options)
+			const records = await findAll<T, P>(model, options, {
+				includeRequiredDefault: config?.includeRequiredDefault ?? findAllByPage.includeRequiredDefault
+			})
 			return {
 				rows: records,
 				rowsCount: records.length
@@ -196,9 +211,11 @@ export const findAllByPage: {
 
 			const rows = await findAll(model, {
 				...options,
-				attributes: ['id'],
 				limit: rowsPerPage,
 				offset: (page - 1) * rowsPerPage
+			}, {
+				secureSeparate: true,
+				includeRequiredDefault: config?.includeRequiredDefault ?? findAllByPage.includeRequiredDefault
 			})
 
 			return {
@@ -207,3 +224,33 @@ export const findAllByPage: {
 			}
 		}
 	}
+findAllByPage.includeRequiredDefault = false
+findAllByPage.rowsPerPage = 50
+
+export const selectQuery = (model: new () => any, options: PFindOptions) => {
+	const m = model as any
+	if (options.include) completeAnyInclude(m, options.include)
+	if (options.order) completeOrder(m, options.order)
+	completeFilter(m, options)
+
+	const sequelizeInstance = m.sequelize as Sequelize
+	if (!sequelizeInstance) throw new Error(`No se ha inicializado la instancia`)
+
+	return (sequelizeInstance.getQueryInterface().queryGenerator as any).selectQuery(model.name, options).replace(/;$/, '')
+}
+
+export const countQuery = (model: new () => any, options: PFindOptions) => {
+	const m = model as any
+
+	if (options.include) completeAnyInclude(m, options.include)
+	if (options.order) completeOrder(m, options.order)
+	completeFilter(m, options)
+
+	const sequelizeInstance = m.sequelize as Sequelize
+	if (!sequelizeInstance) throw new Error(`No se ha inicializado la instancia`)
+	
+	return (sequelizeInstance.getQueryInterface().queryGenerator as any).selectQuery(m.name, {
+		...options,
+		attributes: [[sequelizeInstance.fn('count', sequelizeInstance.col('*')), 'count']]
+	}).replace(/;$/, '')
+}
