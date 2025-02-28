@@ -27,3 +27,23 @@ Test.init({
 	tableName: 'Test',
 	sequelize
 })
+
+export class TestHijos extends Model {
+	declare id: string
+	declare idCabecera: string
+	declare Nombres: string
+	declare Apellidos: string
+	declare Edad: number
+	declare Ingreso: Date
+}
+
+Test.init({
+	id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+	Nombres: { type: DataTypes.STRING },
+	Apellidos: { type: DataTypes.STRING },
+	Edad: { type: DataTypes.INTEGER },
+	Ingreso: { type: DataTypes.DATE }
+}, {
+	tableName: TestHijos.name,
+	sequelize
+})

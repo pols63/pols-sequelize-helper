@@ -1,4 +1,5 @@
-import { FindOptions, Includeable, Model, Op } from 'sequelize'
+import { PUtils } from 'pols-utils'
+import { FindOptions, Includeable, IncludeOptions, Model, Op } from 'sequelize'
 import { Cast, Col, Fn } from 'sequelize/lib/utils'
 
 export type POrder = ([...{ model?: any, as: string }[], string, 'asc' | 'desc'] | [string, 'asc' | 'desc'])[]
@@ -8,14 +9,15 @@ export type PFilter = {
 	fields: (string | Fn | Col | Cast)[]
 }
 
-export type PIncludable = Includeable & {
+export type PIncludeOptions = IncludeOptions & {
 	filter?: PFilter
 }
 
 export type PFindOptions = Omit<FindOptions, 'order' | 'include'> & {
 	filter?: PFilter
 	order?: POrder
-	include?: PIncludable | PIncludable[]
+	include?: PIncludeOptions | PIncludeOptions[]
+	page?: number
 }
 
 const completeFilter = (model: typeof Model, options?: PFindOptions) => {
@@ -70,24 +72,27 @@ const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 	options.where[Op.and] = opAnd
 }
 
-const completeInclude = (model: typeof Model, include: PIncludable | PIncludable[]) => {
+const completeInclude = (model: typeof Model, include: PIncludeOptions, secureSeparate = false) => {
+	if (include == null || typeof include != 'object') return
+	if (include.model) return
+	const association = model.associations[include.as]
+	if (association == null) throw new Error(`No se encontró relación con nombre '${include.as}'`)
+	include.model = association.target
+	include.required = include.required ?? false
+	if (include.include) completeAnyInclude(model, include.include as any, secureSeparate)
+	if (secureSeparate && !['BelongsTo', 'HasOne'].includes(association.associationType)) {
+		include.separate = true
+	}
+	completeFilter(model, include as any)
+}
+
+const completeAnyInclude = (model: typeof Model, include: PIncludeOptions | PIncludeOptions[], secureSeparate = false) => {
 	if (include instanceof Array) {
-		for (const i of include as any[]) {
-			const association = model.associations[i.as]
-			if (association == null) throw new Error(`No se encontró relación con nombre '${i.as}'`)
-			i.model = association.target
-			i.required = i.required ?? false
-			if (i.include) completeInclude(i.model, i.include)
-			completeFilter(i.model, i)
+		for (const i of include) {
+			completeInclude(model, i, secureSeparate)
 		}
 	} else {
-		const i = include as any
-		const association = model.associations[i.as]
-		if (association == null) throw new Error(`No se encontró relación con nombre '${i.as}'`)
-		i.model = association.target
-		i.required = i.required ?? false
-		if (i.include) completeInclude(i.model, i.include)
-		completeFilter(i.model, i)
+		completeInclude(model, include, secureSeparate)
 	}
 }
 
@@ -109,20 +114,96 @@ const completeOrder = (model: typeof Model, order: POrder) => {
 	}
 }
 
-export const findAll = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions): Promise<[T] extends [never] ? P[] : T[]> => {
+const includeIsBelongsTo = (model: any, include: PIncludeOptions) => {
+	const association = model.associations[include.as]
+	if (association == null) throw new Error(`No se encontró relación con nombre '${include.as}'`)
+	return association.associationType == 'BelongsTo'
+}
+
+export const findAll = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions): Promise<[T] extends [never] ? InstanceType<P>[] : T[]> => {
 	const m = model as any
-	if (options?.include) completeInclude(m, options.include)
+	if (options?.include) completeAnyInclude(m, options.include, true)
 	if (options?.order) completeOrder(m, options.order)
 	completeFilter(m, options)
 
 	return await m.findAll(options)
 }
 
-export const findOne = async <T, P extends new () => any = new () => any>(model: P, options?: PFindOptions): Promise<[T] extends [never] ? P : T> => {
+export const findOne = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions): Promise<[T] extends [never] ? InstanceType<P> : T> => {
 	const m = model as any
-	if (options?.include) completeInclude(m, options.include)
+	if (options?.include) completeAnyInclude(m, options.include)
 	if (options?.order) completeOrder(m, options.order)
 	completeFilter(m, options)
 
 	return await m.findOne(options)
 }
+
+export const count = async (model: any, options: PFindOptions): Promise<number> => {
+	completeFilter(model, options)
+
+	const optionsCopy = { ...options }
+
+	if (optionsCopy.include) {
+		if (optionsCopy.include instanceof Array) {
+			const include: PIncludeOptions[] = []
+			for (const i of optionsCopy.include) {
+				if (includeIsBelongsTo(model, i)) include.push(i)
+			}
+			optionsCopy.include = include
+		} else {
+			if (!includeIsBelongsTo(model, optionsCopy.include)) delete optionsCopy.include
+		}
+	}
+
+	if (optionsCopy.include) completeAnyInclude(model, optionsCopy.include)
+
+	return await model.count(optionsCopy)
+}
+
+export const findAllByPage: {
+	<T, P extends new () => any = new () => any>(model: P, options?: PFindOptions, rowsPerPage?: number): Promise<{
+		rows: [T] extends [never] ? InstanceType<P>[] : T[]
+		rowsCount: number
+	}>
+	rowsPerPage?: number
+} = async <T, P extends new () => any = new () => any>(model: P, options?: PFindOptions, rowsPerPage?: number): Promise<{
+	rows: [T] extends [never] ? InstanceType<P>[] : T[]
+	rowsCount: number
+}> => {
+		const m = model as unknown as Model
+		let page = options.page != null ? Math.floor(PUtils.Number.forceNumber(options.page)) : -1
+		rowsPerPage = Math.floor(PUtils.Number.forceNumber(rowsPerPage || findAllByPage.rowsPerPage))
+
+		if (page < 1 || rowsPerPage <= 0) {
+			const records = await findAll<T, P>(model, options)
+			return {
+				rows: records,
+				rowsCount: records.length
+			}
+		} else {
+			const rowsCount = await count(model, {
+				...options,
+				attributes: undefined
+			})
+			if (!rowsCount) {
+				return {
+					rows: [],
+					rowsCount
+				}
+			}
+			const limitPage = Math.max(Math.ceil(rowsCount / rowsPerPage), 1)
+			page = page > limitPage ? limitPage : page
+
+			const rows = await findAll(model, {
+				...options,
+				attributes: ['id'],
+				limit: rowsPerPage,
+				offset: (page - 1) * rowsPerPage
+			})
+
+			return {
+				rows,
+				rowsCount
+			}
+		}
+	}

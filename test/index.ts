@@ -1,5 +1,5 @@
 import { sequelize, Test } from "./models"
-import { findAll } from '../src/index'
+import { findAll, findAllByPage } from '../src/index'
 
 sequelize.sync().then(async () => {
 	await Test.findOrCreate({
@@ -38,7 +38,7 @@ sequelize.sync().then(async () => {
 
 	const registros1 = await findAll(Test)
 	console.log(registros1)
-	registros1[0].Nom
+	registros1[0]
 
 	const registros2 = await findAll(Test, {
 		where: { id: 1 }
@@ -56,6 +56,8 @@ sequelize.sync().then(async () => {
 		raw: true
 	})
 	console.log(registros3)
+
+	const registros4 = await findAllByPage(Test, {}, 5)
 
 	console.log('FIN')
 })
