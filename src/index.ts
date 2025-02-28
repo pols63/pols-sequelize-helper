@@ -175,12 +175,12 @@ export const count = async (model: any, options: PFindOptions): Promise<number> 
 }
 
 export const findAllByPage: {
-	<T, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllByPageConfig): Promise<{
+	<T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllByPageConfig): Promise<{
 		rows: [T] extends [never] ? InstanceType<P>[] : T[]
 		rowsCount: number
 	}>
 	rowsPerPage?: number
-} & PFindAllByPageConfig = async <T, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllByPageConfig): Promise<{
+} & PFindAllByPageConfig = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllByPageConfig): Promise<{
 	rows: [T] extends [never] ? InstanceType<P>[] : T[]
 	rowsCount: number
 }> => {
