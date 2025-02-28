@@ -227,7 +227,7 @@ export const findAllByPage: {
 findAllByPage.includeRequiredDefault = false
 findAllByPage.rowsPerPage = 50
 
-export const selectQuery = (model: new () => any, options: PFindOptions) => {
+export const selectQuery = (model: new () => any, options: PFindOptions): string => {
 	const m = model as any
 	if (options.include) completeAnyInclude(m, options.include)
 	if (options.order) completeOrder(m, options.order)
@@ -239,7 +239,7 @@ export const selectQuery = (model: new () => any, options: PFindOptions) => {
 	return (sequelizeInstance.getQueryInterface().queryGenerator as any).selectQuery(model.name, options).replace(/;$/, '')
 }
 
-export const countQuery = (model: new () => any, options: PFindOptions) => {
+export const countQuery = (model: new () => any, options: PFindOptions): string => {
 	const m = model as any
 
 	if (options.include) completeAnyInclude(m, options.include)
