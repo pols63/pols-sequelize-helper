@@ -250,9 +250,11 @@ export const countQuery = (model: new () => any, options: PFindOptions): string 
 
 	const sequelizeInstance = m.sequelize as Sequelize
 	if (!sequelizeInstance) throw new Error(`No se ha inicializado la instancia`)
+	const queryGenerator = sequelizeInstance.getQueryInterface().queryGenerator as any
+	const tableName = queryGenerator.quoteTable({ schema: m.schema, tableName: model.name })
 	
-	return (sequelizeInstance.getQueryInterface().queryGenerator as any).selectQuery(m.name, {
+	return (sequelizeInstance.getQueryInterface().queryGenerator as any).selectQuery('@@toreplace@@', {
 		...options,
 		attributes: [[sequelizeInstance.fn('count', sequelizeInstance.col('*')), 'count']]
-	}).replace(/;$/, '')
+	}).replace(/;$/, '').replace(/@@toreplace@@/g, tableName)
 }
