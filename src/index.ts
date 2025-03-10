@@ -1,5 +1,5 @@
 import { PUtils } from 'pols-utils'
-import { FindOptions, Includeable, IncludeOptions, Model, Op, Sequelize } from 'sequelize'
+import { FindOptions, IncludeOptions, Model, Op, Sequelize } from 'sequelize'
 import { Cast, Col, Fn } from 'sequelize/lib/utils'
 
 export type POrder = ([...{ model?: any, as: string }[], string, 'asc' | 'desc'] | [string, 'asc' | 'desc'])[]
