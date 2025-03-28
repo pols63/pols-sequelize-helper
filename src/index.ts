@@ -90,7 +90,7 @@ const completeInclude = (model: typeof Model, include: PIncludeOptions, secureSe
 	include.model = association.target
 	if (include.required == null) include.required = includeRequiredDefault
 	if (include.include) completeAnyInclude(model, include.include as any, secureSeparate)
-	if (secureSeparate && !['BelongsTo', 'HasOne'].includes(association.associationType)) {
+	if (secureSeparate && association.associationType == 'HasMany') {
 		include.separate = true
 	}
 	completeFilter(model, include as any)
@@ -254,7 +254,7 @@ export const countQuery = (model: new () => any, options: PFindOptions): string 
 	const queryGenerator = sequelizeInstance.getQueryInterface().queryGenerator as any
 	const tableName = queryGenerator.quoteTable({ schema: m._schema, tableName: model.name })
 	const tableNameToReplace = queryGenerator.quoteTable({ tableName: '@@toreplace@@' }).replace(/\[/g, '\\[').replace(/\]/g, '\\]').replace(/\./g, '\\.')
-	
+
 	return queryGenerator.selectQuery('@@toreplace@@', {
 		...options,
 		attributes: [[sequelizeInstance.fn('count', sequelizeInstance.col('*')), 'count']]
