@@ -1,4 +1,4 @@
-import { PUtils } from 'pols-utils'
+import { PUtilsNumber } from 'pols-utils'
 import { FindOptions, IncludeOptions, Model, Op, Sequelize } from 'sequelize'
 import { Cast, Col, Fn } from 'sequelize/lib/utils'
 
@@ -184,8 +184,8 @@ export const findAllByPage: {
 	rows: [T] extends [never] ? InstanceType<P>[] : T[]
 	rowsCount: number
 }> => {
-		let page = options.page != null ? Math.floor(PUtils.Number.forceNumber(options.page)) : -1
-		let rowsPerPage = Math.floor(PUtils.Number.forceNumber(options.rowsPerPage ?? findAllByPage.rowsPerPage))
+		let page = options.page != null ? Math.floor(PUtilsNumber.parse(options.page)) : -1
+		let rowsPerPage = Math.floor(PUtilsNumber.parse(options.rowsPerPage ?? findAllByPage.rowsPerPage))
 
 		if (page < 1 || rowsPerPage <= 0) {
 			const records = await findAll<T, P>(model, options, {
