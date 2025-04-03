@@ -11,7 +11,7 @@ export type PFilter = {
 
 export type PIncludeOptions = Omit<IncludeOptions, 'order'> & {
 	filter?: PFilter
-	order: POrder
+	order?: POrder
 }
 
 export type PFindOptions = Omit<FindOptions, 'order' | 'include'> & {
