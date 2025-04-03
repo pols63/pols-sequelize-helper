@@ -9,8 +9,9 @@ export type PFilter = {
 	fields: (string | Fn | Col | Cast)[]
 }
 
-export type PIncludeOptions = IncludeOptions & {
+export type PIncludeOptions = Omit<IncludeOptions, 'order'> & {
 	filter?: PFilter
+	order: POrder
 }
 
 export type PFindOptions = Omit<FindOptions, 'order' | 'include'> & {
