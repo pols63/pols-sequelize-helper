@@ -89,7 +89,8 @@ const completeInclude = (model: typeof Model, include: PIncludeOptions, secureSe
 	if (association == null) throw new Error(`No se encontró relación con nombre '${include.as}'`)
 	include.model = association.target
 	if (include.required == null) include.required = includeRequiredDefault
-	if (include.include) completeAnyInclude(model, include.include as any, secureSeparate)
+	if (include.include) completeAnyInclude(include.model as any, include.include as any, secureSeparate)
+	if (include.order) completeOrder(include.model as any, include.order as any)
 	if (secureSeparate && association.associationType == 'HasMany') {
 		include.separate = true
 	}
