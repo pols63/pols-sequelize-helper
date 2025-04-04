@@ -1,5 +1,5 @@
 import { sequelize, TestPadres } from "./models"
-import { findAll, findAllByPage } from '../src/index'
+import { findAll, findAllByPage, findOrBuild } from '../src/index'
 
 const run = async () => {
 	// const registros1 = await findAll(TestPadres, {
@@ -15,6 +15,10 @@ const run = async () => {
 		page: 2,
 	})
 	console.log(registros2)
+
+	await findOrBuild(TestPadres, {
+		defaults: {}
+	})
 
 	console.log('FIN')
 }

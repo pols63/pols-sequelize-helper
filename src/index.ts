@@ -1,5 +1,5 @@
 import { PUtilsNumber } from 'pols-utils'
-import { FindOptions, IncludeOptions, Model, Op, Sequelize } from 'sequelize'
+import { FindOptions, FindOrBuildOptions, IncludeOptions, Model, Op, Sequelize } from 'sequelize'
 import { Cast, Col, Fn } from 'sequelize/lib/utils'
 
 export type POrder = ([...{ model?: any, as: string }[], string, 'asc' | 'desc'] | [string, 'asc' | 'desc'])[]
@@ -15,6 +15,14 @@ export type PIncludeOptions = Omit<IncludeOptions, 'order'> & {
 }
 
 export type PFindOptions = Omit<FindOptions, 'order' | 'include'> & {
+	filter?: PFilter
+	order?: POrder
+	include?: PIncludeOptions | PIncludeOptions[]
+	page?: number
+	rowsPerPage?: number
+}
+
+export type PFindOrBuildOptions = Omit<FindOrBuildOptions, 'order' | 'include'> & {
 	filter?: PFilter
 	order?: POrder
 	include?: PIncludeOptions | PIncludeOptions[]
@@ -152,6 +160,15 @@ export const findOne = async <T = never, P extends new () => any = new () => any
 	completeFilter(m, options)
 
 	return await m.findOne(options)
+}
+
+export const findOrBuild = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOrBuildOptions): Promise<[T] extends [never] ? InstanceType<P> : T> => {
+	const m = model as any
+	if (options?.include) completeAnyInclude(m, options.include, false)
+	if (options?.order) completeOrder(m, options.order)
+	completeFilter(m, options)
+
+	return await m.findOrBuild(options)
 }
 
 export const count = async (model: any, options: PFindOptions): Promise<number> => {
