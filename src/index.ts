@@ -1,4 +1,4 @@
-import { PUtilsNumber } from 'pols-utils'
+import { PUtilsNumber, PUtilsString } from 'pols-utils'
 import { FindOptions, FindOrBuildOptions, IncludeOptions, Model, Op, Sequelize } from 'sequelize'
 import { Cast, Col, Fn } from 'sequelize/lib/utils'
 
@@ -45,7 +45,8 @@ const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 	const sequelizeInstance = model.sequelize
 	const opAnd: unknown[] = options.where[Op.and] ?? []
 	const opOr: unknown[] = []
-	const tokens = options.filter.text.split(' ')
+	const filter_text = PUtilsString.withoutAccentMark(options.filter.text.trim())
+	const tokens = filter_text.split(' ')
 	const dialect = sequelizeInstance.getDialect()
 	for (const field of options.filter.fields) {
 		const opAnd: unknown[] = []
