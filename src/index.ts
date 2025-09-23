@@ -101,7 +101,7 @@ const completeInclude = (model: typeof Model, include: PIncludeOptions, secureSe
 	if (include.required == null) include.required = includeRequiredDefault
 	if (include.include) completeAnyInclude(include.model as any, include.include as any, secureSeparate)
 	if (include.order) completeOrder(include.model as any, include.order as any)
-	if (secureSeparate && association.associationType == 'HasMany' && include.required == false) {
+	if (include.separate == null && secureSeparate && association.associationType == 'HasMany' && include.required == false) {
 		include.separate = true
 	}
 	completeFilter(model, include as any)
