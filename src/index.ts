@@ -1,5 +1,5 @@
 import { PUtilsNumber, PUtilsString } from 'pols-utils'
-import { FindOptions, FindOrBuildOptions, IncludeOptions, Model, Op, Sequelize } from 'sequelize'
+import { FindOptions, FindOrBuildOptions, IncludeOptions, Model, Op, Sequelize, WhereOptions } from 'sequelize'
 import { Cast, Col, Fn } from 'sequelize/lib/utils'
 
 export type POrder = ([...{ model?: any, as: string }[], string, 'asc' | 'desc'] | [string, 'asc' | 'desc'])[]
@@ -39,14 +39,14 @@ export type PFindAllByPageConfig = {
 	includeRequiredDefault?: boolean
 }
 
-export const makeFilterCondition = (model: typeof Model, params: PFilter) => {
-	const opOr: unknown[] = []
+export const makeFilterCondition = (model: typeof Model, params: PFilter): WhereOptions => {
+	const opOr: WhereOptions[] = []
 	const filter_text = PUtilsString.withoutAccentMark(params.text.trim())
 	const tokens = filter_text.split(' ')
 	const sequelize = model.sequelize
 	const dialect = sequelize.getDialect()
 	for (const field of params.fields) {
-		const opAnd: unknown[] = []
+		const opAnd: WhereOptions[] = []
 		for (const token of tokens) {
 			let likeValue = `%${token.toLowerCase()}%`
 			if (token.match(/(?<!\*)\*(?!\*)/)) {
@@ -83,17 +83,17 @@ export const makeFilterCondition = (model: typeof Model, params: PFilter) => {
 					break
 			}
 		}
-		opOr.push(opAnd)
+		opOr.push({ [Op.and]: opAnd })
 	}
-	return opOr
+	return { [Op.or]: opOr }
 }
 
 const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 	if (!options?.filter?.fields.length || !options.filter?.text) return
 	if (!options?.where) options.where = {}
-	const opAnd: unknown[] = options.where[Op.and] ?? []
+	const opAnd: WhereOptions[] = options.where[Op.and] ?? []
 
-	opAnd.push({ [Op.or]: makeFilterCondition(model, options.filter) })
+	opAnd.push(makeFilterCondition(model, options.filter))
 	options.where[Op.and] = opAnd
 }
 
