@@ -39,16 +39,13 @@ export type PFindAllByPageConfig = {
 	includeRequiredDefault?: boolean
 }
 
-const completeFilter = (model: typeof Model, options?: PFindOptions) => {
-	if (!options?.filter?.fields.length || !options.filter?.text) return
-	if (!options?.where) options.where = {}
-	const sequelizeInstance = model.sequelize
-	const opAnd: unknown[] = options.where[Op.and] ?? []
+export const makeFilterCondition = (model: typeof Model, params: PFilter) => {
 	const opOr: unknown[] = []
-	const filter_text = PUtilsString.withoutAccentMark(options.filter.text.trim())
+	const filter_text = PUtilsString.withoutAccentMark(params.text.trim())
 	const tokens = filter_text.split(' ')
-	const dialect = sequelizeInstance.getDialect()
-	for (const field of options.filter.fields) {
+	const sequelize = model.sequelize
+	const dialect = sequelize.getDialect()
+	for (const field of params.fields) {
 		const opAnd: unknown[] = []
 		for (const token of tokens) {
 			let likeValue = `%${token.toLowerCase()}%`
@@ -57,18 +54,18 @@ const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 			}
 			let col: Fn
 			if (typeof field == 'string') {
-				col = sequelizeInstance.fn('lower', sequelizeInstance.col(`${model.name}.${field}`))
+				col = sequelize.fn('lower', sequelize.col(`${model.name}.${field}`))
 			} else {
-				col = sequelizeInstance.fn('lower', field)
+				col = sequelize.fn('lower', field)
 			}
 			switch (dialect) {
 				case 'mssql': {
-					opAnd.push(sequelizeInstance.where(
-						sequelizeInstance.fn('replace',
-							sequelizeInstance.fn('replace',
-								sequelizeInstance.fn('replace',
-									sequelizeInstance.fn('replace',
-										sequelizeInstance.fn('replace',
+					opAnd.push(sequelize.where(
+						sequelize.fn('replace',
+							sequelize.fn('replace',
+								sequelize.fn('replace',
+									sequelize.fn('replace',
+										sequelize.fn('replace',
 											col,
 											'ú', 'u'),
 										'ó', 'o'),
@@ -80,7 +77,7 @@ const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 					break
 				}
 				case 'postgres':
-					opAnd.push(sequelizeInstance.where(sequelizeInstance.fn('translate', col, 'áéíóú', 'aeiou'),
+					opAnd.push(sequelize.where(sequelize.fn('translate', col, 'áéíóú', 'aeiou'),
 						{ [Op.like]: likeValue }
 					))
 					break
@@ -88,7 +85,15 @@ const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 		}
 		opOr.push(opAnd)
 	}
-	opAnd.push({ [Op.or]: opOr })
+	return opOr
+}
+
+const completeFilter = (model: typeof Model, options?: PFindOptions) => {
+	if (!options?.filter?.fields.length || !options.filter?.text) return
+	if (!options?.where) options.where = {}
+	const opAnd: unknown[] = options.where[Op.and] ?? []
+
+	opAnd.push({ [Op.or]: makeFilterCondition(model, options.filter) })
 	options.where[Op.and] = opAnd
 }
 
