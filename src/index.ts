@@ -232,7 +232,12 @@ export const findAllByPage: {
 				}
 			}
 			const limitPage = Math.max(Math.ceil(rowsCount / rowsPerPage), 1)
-			page = page > limitPage ? limitPage : page
+			if (page > limitPage) {
+				return {
+					rows: [],
+					rowsCount
+				}
+			}
 
 			const rows = await findAll(model, {
 				...options,
