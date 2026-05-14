@@ -94,9 +94,9 @@ const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 	const filters: PFilter[] = []
 
 	if (options?.filter instanceof Array) {
-		filters.push(...options?.filter.filter(f => f.fields?.length))
+		filters.push(...options?.filter.filter(f => f.fields?.length && f.text))
 	} else {
-		if (options?.filter?.fields.length) filters.push(options?.filter)
+		if (options?.filter?.fields.length && options?.filter?.text) filters.push(options?.filter)
 	}
 
 	if (!filters.length) return
