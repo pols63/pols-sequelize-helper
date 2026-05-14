@@ -1,6 +1,6 @@
 import { PUtilsNumber, PUtilsString } from 'pols-utils'
 import { FindOptions, FindOrBuildOptions, IncludeOptions, Model, Op, Sequelize, WhereOptions } from 'sequelize'
-import { Cast, Col, Fn } from 'sequelize/lib/utils'
+import { Cast, Col, Fn, Where } from 'sequelize/lib/utils'
 
 export type POrder = ([...{ model?: any, as: string }[], string, 'asc' | 'desc'] | [string, 'asc' | 'desc'])[]
 
@@ -10,12 +10,12 @@ export type PFilter = {
 }
 
 export type PIncludeOptions = Omit<IncludeOptions, 'order'> & {
-	filter?: PFilter
+	filter?: PFilter | PFilter[]
 	order?: POrder
 }
 
 export type PFindOptions = Omit<FindOptions, 'order' | 'include'> & {
-	filter?: PFilter
+	filter?: PFilter | PFilter[]
 	order?: POrder
 	include?: PIncludeOptions | PIncludeOptions[]
 	page?: number
@@ -23,7 +23,7 @@ export type PFindOptions = Omit<FindOptions, 'order' | 'include'> & {
 }
 
 export type PFindOrBuildOptions = Omit<FindOrBuildOptions, 'order' | 'include'> & {
-	filter?: PFilter
+	filter?: PFilter | PFilter[]
 	order?: POrder
 	include?: PIncludeOptions | PIncludeOptions[]
 	page?: number
@@ -89,11 +89,24 @@ export const makeFilterCondition = (model: typeof Model, params: PFilter): Where
 }
 
 const completeFilter = (model: typeof Model, options?: PFindOptions) => {
-	if (!options?.filter?.fields.length || !options.filter?.text) return
+	if (!options?.filter) return
+
+	const filters: PFilter[] = []
+
+	if (options?.filter instanceof Array) {
+		filters.push(...options?.filter.filter(f => f.fields?.length))
+	} else {
+		if (options?.filter?.fields.length) filters.push(options?.filter)
+	}
+
+	if (!filters.length) return
 	if (!options?.where) options.where = {}
 	const opAnd: WhereOptions[] = options.where[Op.and] ?? []
 
-	opAnd.push(makeFilterCondition(model, options.filter))
+	for (const filter of filters) {
+		opAnd.push(makeFilterCondition(model, filter))
+	}
+
 	options.where[Op.and] = opAnd
 }
 
