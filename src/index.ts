@@ -39,6 +39,71 @@ export type PFindAllByPageConfig = {
 	includeRequiredDefault?: boolean
 }
 
+const cloneOrder = (order?: POrder): POrder | undefined => {
+	if (!order) return undefined
+	return order.map(element => {
+		if (Array.isArray(element)) {
+			return element.map(part => {
+				if (part && typeof part === 'object' && 'as' in part) {
+					return { ...part }
+				}
+				return part
+			}) as any
+		}
+		return element
+	})
+}
+
+const cloneInclude = (include: any): any => {
+	if (include == null) return include
+	if (typeof include === 'string' || typeof include === 'function') {
+		return include
+	}
+	if (typeof include === 'object') {
+		const copy = { ...include }
+		if (copy.where) {
+			copy.where = { ...copy.where }
+			if (copy.where[Op.and]) {
+				copy.where[Op.and] = [...(copy.where[Op.and] as any)]
+			}
+		}
+		if (copy.include) {
+			if (Array.isArray(copy.include)) {
+				copy.include = copy.include.map(inc => cloneInclude(inc))
+			} else {
+				copy.include = cloneInclude(copy.include)
+			}
+		}
+		if (copy.order) {
+			copy.order = cloneOrder(copy.order)
+		}
+		return copy
+	}
+	return include
+}
+
+const cloneFindOptions = <T extends PFindOptions | PFindOrBuildOptions>(options?: T): T => {
+	if (!options) return {} as T
+	const copy = { ...options } as any
+	if (copy.where) {
+		copy.where = { ...copy.where }
+		if (copy.where[Op.and]) {
+			copy.where[Op.and] = [...(copy.where[Op.and] as any)]
+		}
+	}
+	if (copy.include) {
+		if (Array.isArray(copy.include)) {
+			copy.include = copy.include.map(inc => cloneInclude(inc))
+		} else {
+			copy.include = cloneInclude(copy.include as any)
+		}
+	}
+	if (copy.order) {
+		copy.order = cloneOrder(copy.order)
+	}
+	return copy as T
+}
+
 export const makeFilterCondition = (model: typeof Model, params: PFilter): WhereOptions => {
 	const opOr: WhereOptions[] = []
 	const filter_text = PUtilsString.withoutAccentMark(params.text.trim())
@@ -66,7 +131,9 @@ export const makeFilterCondition = (model: typeof Model, params: PFilter): Where
 								sequelize.fn('replace',
 									sequelize.fn('replace',
 										sequelize.fn('replace',
-											col,
+											sequelize.fn('replace',
+												col,
+												'ü', 'u'),
 											'ú', 'u'),
 										'ó', 'o'),
 									'í', 'i'),
@@ -77,9 +144,12 @@ export const makeFilterCondition = (model: typeof Model, params: PFilter): Where
 					break
 				}
 				case 'postgres':
-					opAnd.push(sequelize.where(sequelize.fn('translate', col, 'áéíóú', 'aeiou'),
+					opAnd.push(sequelize.where(sequelize.fn('translate', col, 'áéíóúü', 'aeiouu'),
 						{ [Op.like]: likeValue }
 					))
+					break
+				default:
+					opAnd.push(sequelize.where(col, { [Op.like]: likeValue }))
 					break
 			}
 		}
@@ -119,10 +189,10 @@ const completeInclude = (model: typeof Model, include: PIncludeOptions, secureSe
 	if (include.required == null) include.required = includeRequiredDefault
 	if (include.include) completeAnyInclude(include.model as any, include.include as any, secureSeparate)
 	if (include.order) completeOrder(include.model as any, include.order as any)
-	if (include.separate == null && secureSeparate && association.associationType == 'HasMany' && include.required == false) {
+	if (include.separate == null && secureSeparate && ['HasMany', 'BelongsToMany'].includes(association.associationType) && include.required == false) {
 		include.separate = true
 	}
-	completeFilter(model, include as any)
+	completeFilter(include.model as any, include as any)
 }
 
 const completeAnyInclude = (model: typeof Model, include: PIncludeOptions | PIncludeOptions[], secureSeparate = true, includeRequiredDefault = false) => {
@@ -163,53 +233,68 @@ export const findAll: {
 	<T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllConfig): Promise<[T] extends [never] ? InstanceType<P>[] : T[]>
 } & PFindAllConfig = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions, config?: PFindAllConfig): Promise<[T] extends [never] ? InstanceType<P>[] : T[]> => {
 	const m = model as unknown as typeof Model
-	if (options?.include) completeAnyInclude(m, options.include, config?.secureSeparate ?? findAll.secureSeparate, config?.includeRequiredDefault ?? findAll.includeRequiredDefault)
-	if (options?.order) completeOrder(m, options.order)
-	completeFilter(m, options)
+	const clonedOptions = cloneFindOptions(options)
+	if (clonedOptions.include) completeAnyInclude(m, clonedOptions.include, config?.secureSeparate ?? findAll.secureSeparate, config?.includeRequiredDefault ?? findAll.includeRequiredDefault)
+	if (clonedOptions.order) completeOrder(m, clonedOptions.order)
+	completeFilter(m, clonedOptions)
 
-	return await (m as any).findAll(options)
+	return await (m as any).findAll(clonedOptions)
 }
 findAll.includeRequiredDefault = false
 findAll.secureSeparate = true
 
 export const findOne = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOptions): Promise<[T] extends [never] ? InstanceType<P> : T> => {
 	const m = model as any
-	if (options?.include) completeAnyInclude(m, options.include, false)
-	if (options?.order) completeOrder(m, options.order)
-	completeFilter(m, options)
+	const clonedOptions = cloneFindOptions(options)
+	if (clonedOptions.include) completeAnyInclude(m, clonedOptions.include, false)
+	if (clonedOptions.order) completeOrder(m, clonedOptions.order)
+	completeFilter(m, clonedOptions)
 
-	return await m.findOne(options)
+	return await m.findOne(clonedOptions)
 }
 
 export const findOrBuild = async <T = never, P extends new () => any = new () => any>(model: P, options?: PFindOrBuildOptions): Promise<[T] extends [never] ? InstanceType<P> : T> => {
 	const m = model as any
-	if (options?.include) completeAnyInclude(m, options.include, false)
-	if (options?.order) completeOrder(m, options.order)
-	completeFilter(m, options)
+	const clonedOptions = cloneFindOptions(options)
+	if (clonedOptions.include) completeAnyInclude(m, clonedOptions.include, false)
+	if (clonedOptions.order) completeOrder(m, clonedOptions.order)
+	completeFilter(m, clonedOptions)
 
-	return await m.findOrBuild(options)
+	return await m.findOrBuild(clonedOptions)
 }
 
-export const count = async (model: any, options: PFindOptions): Promise<number> => {
-	completeFilter(model, options)
+export const count = async (model: any, options?: PFindOptions): Promise<number> => {
+	const clonedOptions = cloneFindOptions(options)
+	completeFilter(model, clonedOptions)
 
-	const optionsCopy = { ...options }
-
-	if (optionsCopy.include) {
-		if (optionsCopy.include instanceof Array) {
-			const include: PIncludeOptions[] = []
-			for (const i of optionsCopy.include) {
-				if (includeIsOneToOne(model, i)) include.push(i)
+	if (clonedOptions.include) {
+		const shouldKeepInclude = (includeOpt: any): boolean => {
+			if (typeof includeOpt === 'string' || typeof includeOpt === 'function') return true
+			if (includeIsOneToOne(model, includeOpt)) return true
+			if (includeOpt.required === true) return true
+			if (includeOpt.where || includeOpt.filter) return true
+			if (includeOpt.include) {
+				if (Array.isArray(includeOpt.include)) {
+					return includeOpt.include.some(shouldKeepInclude)
+				} else {
+					return shouldKeepInclude(includeOpt.include)
+				}
 			}
-			optionsCopy.include = include
+			return false
+		}
+
+		if (clonedOptions.include instanceof Array) {
+			clonedOptions.include = clonedOptions.include.filter(shouldKeepInclude)
 		} else {
-			if (!includeIsOneToOne(model, optionsCopy.include)) delete optionsCopy.include
+			if (!shouldKeepInclude(clonedOptions.include)) {
+				delete clonedOptions.include
+			}
 		}
 	}
 
-	if (optionsCopy.include) completeAnyInclude(model, optionsCopy.include)
+	if (clonedOptions.include) completeAnyInclude(model, clonedOptions.include)
 
-	return await model.count(optionsCopy)
+	return await model.count(clonedOptions)
 }
 
 export const findAllByPage: {
@@ -222,11 +307,12 @@ export const findAllByPage: {
 	rows: [T] extends [never] ? InstanceType<P>[] : T[]
 	rowsCount: number
 }> => {
-		let page = options.page != null ? Math.floor(PUtilsNumber.parse(options.page)) : -1
-		let rowsPerPage = Math.floor(PUtilsNumber.parse(options.rowsPerPage ?? findAllByPage.rowsPerPage))
+		const clonedOptions = cloneFindOptions(options)
+		let page = clonedOptions?.page != null ? Math.floor(PUtilsNumber.parse(clonedOptions.page)) : -1
+		let rowsPerPage = Math.floor(PUtilsNumber.parse(clonedOptions?.rowsPerPage ?? findAllByPage.rowsPerPage))
 
 		if (page < 1 || rowsPerPage <= 0) {
-			const records = await findAll<T, P>(model, options, {
+			const records = await findAll<T, P>(model, clonedOptions, {
 				includeRequiredDefault: config?.includeRequiredDefault ?? findAllByPage.includeRequiredDefault
 			})
 			return {
@@ -235,7 +321,7 @@ export const findAllByPage: {
 			}
 		} else {
 			const rowsCount = await count(model, {
-				...options,
+				...clonedOptions,
 				attributes: undefined
 			})
 			if (!rowsCount) {
@@ -253,7 +339,7 @@ export const findAllByPage: {
 			}
 
 			const rows = await findAll(model, {
-				...options,
+				...clonedOptions,
 				limit: rowsPerPage,
 				offset: (page - 1) * rowsPerPage
 			}, {
@@ -270,36 +356,50 @@ export const findAllByPage: {
 findAllByPage.includeRequiredDefault = false
 findAllByPage.rowsPerPage = 50
 
-export const selectQuery = (model: new () => any, options: PFindOptions): string => {
+export const selectQuery = (model: new () => any, options?: PFindOptions): string => {
 	const m = model as any
-	if (options.include) completeAnyInclude(m, options.include)
-	if (options.order) completeOrder(m, options.order)
-	completeFilter(m, options)
+	const clonedOptions = cloneFindOptions(options)
+	if (clonedOptions.include) completeAnyInclude(m, clonedOptions.include)
+	if (clonedOptions.order) completeOrder(m, clonedOptions.order)
+	completeFilter(m, clonedOptions)
+
+	if (clonedOptions.include && typeof m._validateIncludedElements === 'function') {
+		m._validateIncludedElements(clonedOptions)
+	}
 
 	const sequelizeInstance = m.sequelize as Sequelize
 	if (!sequelizeInstance) throw new Error(`No se ha inicializado la instancia`)
 	const queryGenerator = sequelizeInstance.getQueryInterface().queryGenerator as any
-	const tableName = queryGenerator.quoteTable({ schema: m._schema, tableName: model.name })
+	const tableName = queryGenerator.quoteTable({ schema: m._schema, tableName: m.tableName })
+	const quotedModel = queryGenerator.quoteIdentifier(model.name)
+	const tableReplacement = m.tableName !== model.name ? `${tableName} AS ${quotedModel}` : tableName
 	const tableNameToReplace = queryGenerator.quoteTable({ tableName: '@@toreplace@@' }).replace(/\[/g, '\\[').replace(/\]/g, '\\]').replace(/\./g, '\\.')
 
-	return queryGenerator.selectQuery('@@toreplace@@', options).replace(/;$/, '').replace(new RegExp(tableNameToReplace, 'g'), tableName)
+	return queryGenerator.selectQuery('@@toreplace@@', clonedOptions).replace(/;$/, '').replace(new RegExp(tableNameToReplace, 'g'), tableReplacement)
 }
 
-export const countQuery = (model: new () => any, options: PFindOptions): string => {
+export const countQuery = (model: new () => any, options?: PFindOptions): string => {
 	const m = model as any
+	const clonedOptions = cloneFindOptions(options)
 
-	if (options.include) completeAnyInclude(m, options.include)
-	if (options.order) completeOrder(m, options.order)
-	completeFilter(m, options)
+	if (clonedOptions.include) completeAnyInclude(m, clonedOptions.include)
+	if (clonedOptions.order) completeOrder(m, clonedOptions.order)
+	completeFilter(m, clonedOptions)
+
+	if (clonedOptions.include && typeof m._validateIncludedElements === 'function') {
+		m._validateIncludedElements(clonedOptions)
+	}
 
 	const sequelizeInstance = m.sequelize as Sequelize
 	if (!sequelizeInstance) throw new Error(`No se ha inicializado la instancia`)
 	const queryGenerator = sequelizeInstance.getQueryInterface().queryGenerator as any
-	const tableName = queryGenerator.quoteTable({ schema: m._schema, tableName: model.name })
+	const tableName = queryGenerator.quoteTable({ schema: m._schema, tableName: m.tableName })
+	const quotedModel = queryGenerator.quoteIdentifier(model.name)
+	const tableReplacement = m.tableName !== model.name ? `${tableName} AS ${quotedModel}` : tableName
 	const tableNameToReplace = queryGenerator.quoteTable({ tableName: '@@toreplace@@' }).replace(/\[/g, '\\[').replace(/\]/g, '\\]').replace(/\./g, '\\.')
 
 	return queryGenerator.selectQuery('@@toreplace@@', {
-		...options,
+		...clonedOptions,
 		attributes: [[sequelizeInstance.fn('count', sequelizeInstance.col('*')), 'count']]
-	}).replace(/;$/, '').replace(new RegExp(tableNameToReplace, 'g'), tableName)
+	}).replace(/;$/, '').replace(new RegExp(tableNameToReplace, 'g'), tableReplacement)
 }
