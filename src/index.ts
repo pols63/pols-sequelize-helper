@@ -263,30 +263,32 @@ export const findOrBuild = async <T = never, P extends new () => any = new () =>
 	return await m.findOrBuild(clonedOptions)
 }
 
+const shouldKeepInclude = (currentModel: any, includeOpt: any): boolean => {
+	if (typeof includeOpt === 'string' || typeof includeOpt === 'function') return true
+	if (includeIsOneToOne(currentModel, includeOpt)) return true
+	if (includeOpt.required === true) return true
+	if (includeOpt.where || includeOpt.filter) return true
+	if (includeOpt.include) {
+		const targetModel = currentModel.associations[includeOpt.as]?.target
+		if (!targetModel) return true
+		if (Array.isArray(includeOpt.include)) {
+			return includeOpt.include.some(i => shouldKeepInclude(targetModel, i))
+		} else {
+			return shouldKeepInclude(targetModel, includeOpt.include)
+		}
+	}
+	return false
+}
+
 export const count = async (model: any, options?: PFindOptions): Promise<number> => {
 	const clonedOptions = cloneFindOptions(options)
 	completeFilter(model, clonedOptions)
 
 	if (clonedOptions.include) {
-		const shouldKeepInclude = (includeOpt: any): boolean => {
-			if (typeof includeOpt === 'string' || typeof includeOpt === 'function') return true
-			if (includeIsOneToOne(model, includeOpt)) return true
-			if (includeOpt.required === true) return true
-			if (includeOpt.where || includeOpt.filter) return true
-			if (includeOpt.include) {
-				if (Array.isArray(includeOpt.include)) {
-					return includeOpt.include.some(shouldKeepInclude)
-				} else {
-					return shouldKeepInclude(includeOpt.include)
-				}
-			}
-			return false
-		}
-
 		if (clonedOptions.include instanceof Array) {
-			clonedOptions.include = clonedOptions.include.filter(shouldKeepInclude)
+			clonedOptions.include = clonedOptions.include.filter(i => shouldKeepInclude(model, i))
 		} else {
-			if (!shouldKeepInclude(clonedOptions.include)) {
+			if (!shouldKeepInclude(model, clonedOptions.include)) {
 				delete clonedOptions.include
 			}
 		}
