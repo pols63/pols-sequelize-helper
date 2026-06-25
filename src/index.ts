@@ -54,6 +54,14 @@ const cloneOrder = (order?: POrder): POrder | undefined => {
 	})
 }
 
+const isPlainObject = (value: any): boolean => {
+	if (value == null || typeof value !== 'object') {
+		return false
+	}
+	const proto = Object.getPrototypeOf(value)
+	return proto === null || proto === Object.prototype
+}
+
 const cloneInclude = (include: any): any => {
 	if (include == null) return include
 	if (typeof include === 'string' || typeof include === 'function') {
@@ -61,9 +69,9 @@ const cloneInclude = (include: any): any => {
 	}
 	if (typeof include === 'object') {
 		const copy = { ...include }
-		if (copy.where) {
+		if (copy.where && isPlainObject(copy.where)) {
 			copy.where = { ...copy.where }
-			if (copy.where[Op.and]) {
+			if (copy.where[Op.and] && Array.isArray(copy.where[Op.and])) {
 				copy.where[Op.and] = [...(copy.where[Op.and] as any)]
 			}
 		}
@@ -85,9 +93,9 @@ const cloneInclude = (include: any): any => {
 const cloneFindOptions = <T extends PFindOptions | PFindOrBuildOptions>(options?: T): T => {
 	if (!options) return {} as T
 	const copy = { ...options } as any
-	if (copy.where) {
+	if (copy.where && isPlainObject(copy.where)) {
 		copy.where = { ...copy.where }
-		if (copy.where[Op.and]) {
+		if (copy.where[Op.and] && Array.isArray(copy.where[Op.and])) {
 			copy.where[Op.and] = [...(copy.where[Op.and] as any)]
 		}
 	}
@@ -171,7 +179,14 @@ const completeFilter = (model: typeof Model, options?: PFindOptions) => {
 
 	if (!filters.length) return
 	if (!options?.where) options.where = {}
-	const opAnd: WhereOptions[] = options.where[Op.and] ?? []
+	let opAnd = options.where[Op.and]
+	if (opAnd == null) {
+		opAnd = []
+	} else if (!Array.isArray(opAnd)) {
+		opAnd = [opAnd]
+	} else {
+		opAnd = [...opAnd]
+	}
 
 	for (const filter of filters) {
 		opAnd.push(makeFilterCondition(model, filter))
